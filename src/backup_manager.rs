@@ -64,7 +64,7 @@ fn create_backup<C: Compressor>(
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
     {
-        let size = compressor.add_file(file.path())?;
+        let size = compressor.add_file(file.path(), file.path().strip_prefix(base_path).wrap_err("File outside base path!")?)?;
         let human_size = if size.is_nan() {
             "unknown".into()
         } else {

@@ -11,7 +11,7 @@ pub trait Compressor {
     const NAME: &'static str;
     fn new(path: PathBuf) -> Result<Box<Self>>;
     /// Returns: size of original size
-    fn add_file(&mut self, path: &Path) -> Result<f64>;
+    fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64>;
     /// Returns: size of compressed file
     fn finish(self) -> Result<f64>;
 }
@@ -30,9 +30,9 @@ impl Compressor for ZipCompressor {
     }
 
     #[tracing::instrument(skip(self))]
-    fn add_file(&mut self, path: &Path) -> Result<f64> {
+    fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64> {
         self.writer.start_file(
-            path.to_str().ok_or_else(|| eyre!("Invalid file name"))?,
+            relative_path.to_str().ok_or_else(|| eyre!("Invalid file name"))?,
             FileOptions::default(),
         )?;
         let mut input_file = File::open(path).wrap_err("Failed to open file")?;
@@ -60,6 +60,7 @@ pub struct TarGzCompressor<const LEVEL: u32> {
 impl<const LEVEL: u32> Compressor for TarGzCompressor<LEVEL> {
     const NAME: &'static str = "targz";
 
+    #[tracing::instrument]
     fn new(path: PathBuf) -> Result<Box<Self>> {
         let compressor = GzEncoder::new(
             File::create(&path).wrap_err("Failed to open file")?,
@@ -69,13 +70,15 @@ impl<const LEVEL: u32> Compressor for TarGzCompressor<LEVEL> {
         Ok(Box::new(Self { writer, path }))
     }
 
-    fn add_file(&mut self, path: &Path) -> Result<f64> {
+    #[tracing::instrument(skip(self))]
+    fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64> {
         let mut file = File::open(path).wrap_err("Failed to open file")?;
-        self.writer.append_file(path, &mut file).wrap_err("Failed to compress file")?;
+        self.writer.append_file(relative_path, &mut file).wrap_err("Failed to compress file")?;
         let size = file.metadata().map(|m| m.len() as f64).unwrap_or(f64::NAN);
         Ok(size)
     }
 
+    #[tracing::instrument(skip(self))]
     fn finish(mut self) -> Result<f64> {
         self.writer.finish().wrap_err("Failed to compress files")?;
         drop(self.writer);
