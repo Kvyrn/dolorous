@@ -1,5 +1,6 @@
 mod configs;
 mod backup_manager;
+mod compressor;
 
 use crate::configs::DolorousConfig;
 use clap::Parser;
@@ -28,7 +29,7 @@ struct Args {
 fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
-    let config: DolorousConfig =
+    let mut config: DolorousConfig =
         Figment::from(Serialized::from(DolorousConfig::default(), "default"))
             .merge(Yaml::file(args.config))
             .extract()
@@ -41,7 +42,7 @@ fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_env("DOLOROUS_LOG"))
         .init();
 
-    let mgr = BackupManager::new(config.backups.clone());
+    let mgr = BackupManager::new(std::mem::take(&mut config.backups));
     mgr.run_backup("default")?;
 
     Ok(())

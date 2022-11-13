@@ -72,6 +72,8 @@ pub struct StopProperties {
 pub enum BackupFileType {
     Zip,
     TarGz,
+    TarGzFast,
+    TarGzSmall,
 }
 
 fn default_duration() -> Duration {

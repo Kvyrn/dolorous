@@ -1,2 +1,5 @@
 /target
 .idea
+backups/
+test/
+test.yml
