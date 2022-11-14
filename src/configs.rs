@@ -74,6 +74,8 @@ pub enum BackupFileType {
     TarGz,
     TarGzFast,
     TarGzSmall,
+    Tar,
+    Copy,
 }
 
 fn default_duration() -> Duration {

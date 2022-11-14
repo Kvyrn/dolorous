@@ -1,4 +1,4 @@
-use color_eyre::eyre::{eyre, WrapErr};
+use color_eyre::eyre::{bail, eyre, ContextCompat, WrapErr};
 use color_eyre::Result;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -32,7 +32,9 @@ impl Compressor for ZipCompressor {
     #[tracing::instrument(skip(self))]
     fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64> {
         self.writer.start_file(
-            relative_path.to_str().ok_or_else(|| eyre!("Invalid file name"))?,
+            relative_path
+                .to_str()
+                .ok_or_else(|| eyre!("Invalid file name"))?,
             FileOptions::default(),
         )?;
         let mut input_file = File::open(path).wrap_err("Failed to open file")?;
@@ -73,7 +75,9 @@ impl<const LEVEL: u32> Compressor for TarGzCompressor<LEVEL> {
     #[tracing::instrument(skip(self))]
     fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64> {
         let mut file = File::open(path).wrap_err("Failed to open file")?;
-        self.writer.append_file(relative_path, &mut file).wrap_err("Failed to compress file")?;
+        self.writer
+            .append_file(relative_path, &mut file)
+            .wrap_err("Failed to compress file")?;
         let size = file.metadata().map(|m| m.len() as f64).unwrap_or(f64::NAN);
         Ok(size)
     }
@@ -86,5 +90,69 @@ impl<const LEVEL: u32> Compressor for TarGzCompressor<LEVEL> {
             .map(|m| m.len() as f64)
             .unwrap_or(f64::NAN);
         Ok(output_size)
+    }
+}
+
+pub struct TarCompressor {
+    writer: tar::Builder<File>,
+    path: PathBuf,
+}
+
+impl Compressor for TarCompressor {
+    const NAME: &'static str = "tar";
+
+    #[tracing::instrument]
+    fn new(path: PathBuf) -> Result<Box<Self>> {
+        let writer = tar::Builder::new(File::create(&path).wrap_err("Failed to open file")?);
+        Ok(Box::new(Self { writer, path }))
+    }
+
+    #[tracing::instrument(skip(self))]
+    fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64> {
+        let mut file = File::open(path).wrap_err("Failed to open file")?;
+        self.writer
+            .append_file(relative_path, &mut file)
+            .wrap_err("Failed to compress file")?;
+        let size = file.metadata().map(|m| m.len() as f64).unwrap_or(f64::NAN);
+        Ok(size)
+    }
+
+    #[tracing::instrument(skip(self))]
+    fn finish(mut self) -> Result<f64> {
+        self.writer.finish().wrap_err("Failed to compress files")?;
+        drop(self.writer);
+        let output_size = std::fs::metadata(self.path)
+            .map(|m| m.len() as f64)
+            .unwrap_or(f64::NAN);
+        Ok(output_size)
+    }
+}
+
+pub struct CopyCompressor {
+    path: PathBuf,
+}
+
+impl Compressor for CopyCompressor {
+    const NAME: &'static str = "copy";
+
+    fn new(path: PathBuf) -> Result<Box<Self>> {
+        if path.exists() {
+            bail!("Output path already exists");
+        }
+        std::fs::create_dir(&path).wrap_err("Failed to create output directory")?;
+        Ok(Box::new(Self { path }))
+    }
+
+    fn add_file(&mut self, path: &Path, relative_path: &Path) -> Result<f64> {
+        let output_path = self.path.join(relative_path);
+        std::fs::create_dir_all(output_path.parent().wrap_err("Invalid path")?)
+            .wrap_err("Failed to create directory")?;
+        let output = std::fs::copy(path, output_path).wrap_err("Failed to copy file")?;
+        Ok(output as f64)
+    }
+
+    fn finish(self) -> Result<f64> {
+        let size = fs_extra::dir::get_size(self.path);
+        Ok(size.map(|r| r as f64).unwrap_or(f64::NAN))
     }
 }

@@ -1,4 +1,6 @@
-use crate::compressor::{Compressor, TarGzCompressor, ZipCompressor};
+use crate::compressor::{
+    Compressor, CopyCompressor, TarCompressor, TarGzCompressor, ZipCompressor,
+};
 use crate::configs::{BackupFileType, BackupsConfig};
 use chrono::Local;
 use color_eyre::eyre::{bail, WrapErr};
@@ -10,31 +12,20 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::{debug, info, info_span};
 
-pub struct BackupManager {
-    types: HashMap<String, BackupsConfig>,
-}
+pub fn run_backup(config: &BackupsConfig) -> Result<PathBuf> {
+    let _e = info_span!("run_backup").entered();
+    let name = render_name(config.name.clone(), &config.time_format, &config.file_type)?;
+    let file_path = config.output.as_path().join(&name);
+    (match &config.file_type {
+        BackupFileType::Zip => create_backup::<ZipCompressor>,
+        BackupFileType::TarGz => create_backup::<TarGzCompressor<6>>,
+        BackupFileType::TarGzFast => create_backup::<TarGzCompressor<1>>,
+        BackupFileType::TarGzSmall => create_backup::<TarGzCompressor<9>>,
+        BackupFileType::Tar => create_backup::<TarCompressor>,
+        BackupFileType::Copy => create_backup::<CopyCompressor>,
+    })(&config.location, file_path.clone(), &config.files)?;
 
-impl BackupManager {
-    pub fn new(types: HashMap<String, BackupsConfig>) -> Self {
-        Self { types }
-    }
-
-    #[tracing::instrument(skip(self))]
-    pub fn run_backup(&self, name: &str) -> Result<()> {
-        let Some(config) = self.types.get(name) else {
-            bail!("Unknown config!");
-        };
-        let name = render_name(config.name.clone(), &config.time_format, &config.file_type)?;
-        let file_path = config.output.as_path().join(&name);
-        (match &config.file_type {
-            BackupFileType::Zip => create_backup::<ZipCompressor>,
-            BackupFileType::TarGz => create_backup::<TarGzCompressor<6>>,
-            BackupFileType::TarGzFast => create_backup::<TarGzCompressor<1>>,
-            BackupFileType::TarGzSmall => create_backup::<TarGzCompressor<9>>,
-        })(&config.location, file_path, &config.files)?;
-
-        Ok(())
-    }
+    Ok(file_path)
 }
 
 fn create_backup<C: Compressor>(
@@ -44,7 +35,7 @@ fn create_backup<C: Compressor>(
 ) -> Result<()> {
     let _e = info_span!(
         "create_backup",
-        file_type = C::NAME,
+        backup_type = C::NAME,
         output = ?output_path,
         ?base_path,
     )
@@ -64,7 +55,12 @@ fn create_backup<C: Compressor>(
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
     {
-        let size = compressor.add_file(file.path(), file.path().strip_prefix(base_path).wrap_err("File outside base path!")?)?;
+        let size = compressor.add_file(
+            file.path(),
+            file.path()
+                .strip_prefix(base_path)
+                .wrap_err("File outside base path!")?,
+        )?;
         let human_size = if size.is_nan() {
             "unknown".into()
         } else {
@@ -105,5 +101,7 @@ fn find_extension(typ: &BackupFileType) -> &str {
     match typ {
         BackupFileType::Zip => "zip",
         BackupFileType::TarGz | BackupFileType::TarGzSmall | BackupFileType::TarGzFast => "tar.gz",
+        BackupFileType::Tar => "tar",
+        BackupFileType::Copy => "d",
     }
 }
