@@ -1,9 +1,9 @@
 use crate::compressor::{
     Compressor, CopyCompressor, TarCompressor, TarGzCompressor, ZipCompressor,
 };
-use crate::configs::{BackupFileType, BackupsConfig};
+use crate::configs::{BackupFileType, BackupsConfig, DolorousConfig};
 use chrono::Local;
-use color_eyre::eyre::{bail, WrapErr};
+use color_eyre::eyre::{bail, eyre, WrapErr};
 use color_eyre::Result;
 use globwalk::GlobWalkerBuilder;
 use new_string_template::template::Template;
@@ -12,18 +12,30 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::{debug, info, info_span};
 
-pub fn run_backup(config: &BackupsConfig) -> Result<PathBuf> {
-    let _e = info_span!("run_backup").entered();
-    let name = render_name(config.name.clone(), &config.time_format, &config.file_type)?;
-    let file_path = config.output.as_path().join(&name);
-    (match &config.file_type {
+pub fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf> {
+    let _e = info_span!("run_backup", backup).entered();
+    let backup_config = config
+        .backups
+        .get(backup)
+        .ok_or_else(|| eyre!("Undefined backup: {}", backup))?;
+    let name = render_name(
+        backup_config.name.clone(),
+        &backup_config.time_format,
+        &backup_config.file_type,
+    )?;
+    let file_path = backup_config.output.as_path().join(&name);
+    (match &backup_config.file_type {
         BackupFileType::Zip => create_backup::<ZipCompressor>,
         BackupFileType::TarGz => create_backup::<TarGzCompressor<6>>,
         BackupFileType::TarGzFast => create_backup::<TarGzCompressor<1>>,
         BackupFileType::TarGzSmall => create_backup::<TarGzCompressor<9>>,
         BackupFileType::Tar => create_backup::<TarCompressor>,
         BackupFileType::Copy => create_backup::<CopyCompressor>,
-    })(&config.location, file_path.clone(), &config.files)?;
+    })(
+        &backup_config.location,
+        file_path.clone(),
+        &backup_config.files,
+    )?;
 
     Ok(file_path)
 }
