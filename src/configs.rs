@@ -36,7 +36,7 @@ pub struct BackupsConfig {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct TaskConfig {
     /// When the task is scheduled. Uses cron syntax.
@@ -45,7 +45,7 @@ pub struct TaskConfig {
     pub actions: Vec<ActionType>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum ActionType {
     Backup {
@@ -65,7 +65,7 @@ pub enum ActionType {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct StopProperties {
     #[serde(default = "default_stop_command")]

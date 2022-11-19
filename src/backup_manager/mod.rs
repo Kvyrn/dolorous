@@ -1,6 +1,4 @@
-use self::compressor::{
-    Compressor, CopyCompressor, TarCompressor, TarGzCompressor, ZipCompressor,
-};
+use self::compressor::{Compressor, CopyCompressor, TarCompressor, TarGzCompressor, ZipCompressor};
 use crate::configs::{BackupFileType, DolorousConfig};
 use chrono::Local;
 use color_eyre::eyre::{bail, eyre, WrapErr};
@@ -10,7 +8,7 @@ use new_string_template::template::Template;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use tracing::{debug, info, info_span};
+use tracing::{debug, info, info_span, Instrument};
 
 mod compressor;
 
@@ -29,7 +27,7 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
 
     match &backup_config.file_type {
         BackupFileType::Zip => {
-            create_backup::<ZipCompressor>(
+            create_backup_wrapped::<ZipCompressor>(
                 &backup_config.location,
                 file_path.clone(),
                 &backup_config.files,
@@ -37,7 +35,7 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
             .await?
         }
         BackupFileType::TarGz => {
-            create_backup::<TarGzCompressor<6>>(
+            create_backup_wrapped::<TarGzCompressor<6>>(
                 &backup_config.location,
                 file_path.clone(),
                 &backup_config.files,
@@ -45,7 +43,7 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
             .await?
         }
         BackupFileType::TarGzFast => {
-            create_backup::<TarGzCompressor<1>>(
+            create_backup_wrapped::<TarGzCompressor<1>>(
                 &backup_config.location,
                 file_path.clone(),
                 &backup_config.files,
@@ -53,7 +51,7 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
             .await?
         }
         BackupFileType::TarGzSmall => {
-            create_backup::<TarGzCompressor<9>>(
+            create_backup_wrapped::<TarGzCompressor<9>>(
                 &backup_config.location,
                 file_path.clone(),
                 &backup_config.files,
@@ -61,7 +59,7 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
             .await?
         }
         BackupFileType::Tar => {
-            create_backup::<TarCompressor>(
+            create_backup_wrapped::<TarCompressor>(
                 &backup_config.location,
                 file_path.clone(),
                 &backup_config.files,
@@ -69,7 +67,7 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
             .await?
         }
         BackupFileType::Copy => {
-            create_backup::<CopyCompressor>(
+            create_backup_wrapped::<CopyCompressor>(
                 &backup_config.location,
                 file_path.clone(),
                 &backup_config.files,
@@ -81,18 +79,27 @@ pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf
     Ok(file_path)
 }
 
+async fn create_backup_wrapped<C: Compressor>(
+    base_path: &Path,
+    output_path: PathBuf,
+    globs: &[String],
+) -> Result<()> {
+    let outp = output_path.clone();
+    create_backup::<C>(base_path, output_path, globs)
+        .instrument(info_span!(
+            "create_backup",
+            backup_type = C::NAME,
+            output = ?outp,
+            ?base_path,
+        ))
+        .await
+}
+
 async fn create_backup<C: Compressor>(
     base_path: &Path,
     output_path: PathBuf,
     globs: &[String],
 ) -> Result<()> {
-    let _e = info_span!(
-        "create_backup",
-        backup_type = C::NAME,
-        output = ?output_path,
-        ?base_path,
-    )
-    .entered();
     info!("Starting backup...");
     if output_path.exists() {
         bail!("Output path already exists");
