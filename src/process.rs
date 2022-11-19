@@ -66,7 +66,6 @@ pub async fn run(config: &DolorousConfig) -> Result<()> {
             }
             debug!("Stdout closed");
         }
-        .in_current_span()
         .instrument(info_span!("read_stdout", pid)),
     );
 
@@ -93,7 +92,6 @@ pub async fn run(config: &DolorousConfig) -> Result<()> {
             }
             debug!("Stderr closed");
         }
-        .in_current_span()
         .instrument(info_span!("read_stderr", pid)),
     );
 
@@ -126,7 +124,6 @@ pub async fn run(config: &DolorousConfig) -> Result<()> {
             info!("Stdin closed");
             let _ = STDIN.lock().take();
         }
-        .in_current_span()
         .instrument(info_span!("write_stdin", pid)),
     );
 
