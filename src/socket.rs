@@ -43,7 +43,7 @@ async fn run_socket(path: &Path) -> Result<()> {
 }
 
 async fn handle_client(stream: UnixStream) -> Result<()> {
-    debug!("Client connection opened");
+    info!("Client connection opened");
     let (reader, mut writer) = stream.into_split();
     let opt = {
         let sender = crate::process::STDIN.lock();
@@ -74,7 +74,7 @@ async fn handle_client(stream: UnixStream) -> Result<()> {
                 let mut line = String::new();
                 match reader.read_line(&mut line).await {
                     Ok(n) if n < 1 => {
-                        debug!("Client connection closed");
+                        info!("Client connection closed");
                         break;
                     }
                     Err(err) => {
