@@ -43,7 +43,6 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_env("DOLOROUS_LOG"))
         .init();
 
-    info!("{:#?}", config);
     //backup_manager::run_backup(&config, "default").await?;
     socket::setup(&config).await?;
     process::run(&config).await?;
