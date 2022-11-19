@@ -4,15 +4,13 @@ mod configs;
 mod process;
 mod socket;
 
-use std::fs::File;
 use crate::configs::DolorousConfig;
 use clap::Parser;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::path::PathBuf;
-use std::time::Duration;
-use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug, Deserialize, Serialize)]

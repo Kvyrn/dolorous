@@ -57,7 +57,10 @@ impl Compressor for ZipCompressor {
 
     #[tracing::instrument(skip(self))]
     async fn finish(mut self) -> Result<f64> {
-        self.writer.close().await.wrap_err("Failed to compress files")?;
+        self.writer
+            .close()
+            .await
+            .wrap_err("Failed to compress files")?;
         let output_size = tokio::fs::metadata(&self.path)
             .await
             .map(|r| r.len() as f64)

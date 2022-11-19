@@ -2,7 +2,6 @@ use crate::configs::DolorousConfig;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 use std::path::Path;
-use color_eyre::owo_colors::OwoColorize;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
@@ -95,18 +94,19 @@ async fn handle_client(stream: UnixStream) -> Result<()> {
     );
 
     // Transport process output to socket
-    tokio::spawn(async move {
-        if writer.write_all(&data).await.is_err() {
-            return;
-        }
-        while watch.changed().await.is_ok() {
-            let line = {
-                watch.borrow().clone()
-            };
-            if writer.write_all(line.as_bytes()).await.is_err() {
-                break;
+    tokio::spawn(
+        async move {
+            if writer.write_all(&data).await.is_err() {
+                return;
+            }
+            while watch.changed().await.is_ok() {
+                let line = { watch.borrow().clone() };
+                if writer.write_all(line.as_bytes()).await.is_err() {
+                    break;
+                }
             }
         }
-    }.in_current_span());
+        .in_current_span(),
+    );
     Ok(())
 }
