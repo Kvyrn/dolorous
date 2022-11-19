@@ -1,15 +1,18 @@
 mod backup_manager;
 mod compressor;
 mod configs;
+mod process;
+mod socket;
 
+use std::fs::File;
 use crate::configs::DolorousConfig;
 use clap::Parser;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
-use figment::providers::{Format, Serialized, Yaml};
-use figment::Figment;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::Duration;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug, Deserialize, Serialize)]
@@ -25,23 +28,25 @@ struct Args {
     config: PathBuf,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
     let config: DolorousConfig =
-        Figment::from(Serialized::from(DolorousConfig::default(), "default"))
-            .merge(Yaml::file(args.config))
-            .extract()
+        serde_yaml::from_reader(File::open(&args.config).wrap_err("Failed to read config")?)
             .wrap_err("Failed to read config!")?;
 
     if std::env::var("DOLOROUS_LOG").is_err() {
-        std::env::set_var("DOLOROUS_LOG", &config.log);
+        std::env::set_var("DOLOROUS_LOG", &config.log_filter);
     }
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_env("DOLOROUS_LOG"))
         .init();
 
-    backup_manager::run_backup(config.backups.get("default").unwrap())?;
+    info!("{:#?}", config);
+    //backup_manager::run_backup(&config, "default").await?;
+    socket::setup(&config).await?;
+    process::run(&config).await?;
 
     Ok(())
 }

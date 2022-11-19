@@ -1,7 +1,7 @@
 use crate::compressor::{
     Compressor, CopyCompressor, TarCompressor, TarGzCompressor, ZipCompressor,
 };
-use crate::configs::{BackupFileType, BackupsConfig, DolorousConfig};
+use crate::configs::{BackupFileType, DolorousConfig};
 use chrono::Local;
 use color_eyre::eyre::{bail, eyre, WrapErr};
 use color_eyre::Result;
@@ -12,35 +12,74 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::{debug, info, info_span};
 
-pub fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf> {
-    let _e = info_span!("run_backup", backup).entered();
+#[tracing::instrument(skip(config))]
+pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf> {
     let backup_config = config
         .backups
         .get(backup)
         .ok_or_else(|| eyre!("Undefined backup: {}", backup))?;
     let name = render_name(
-        backup_config.name.clone(),
+        &backup_config.name,
         &backup_config.time_format,
         &backup_config.file_type,
     )?;
     let file_path = backup_config.output.as_path().join(&name);
-    (match &backup_config.file_type {
-        BackupFileType::Zip => create_backup::<ZipCompressor>,
-        BackupFileType::TarGz => create_backup::<TarGzCompressor<6>>,
-        BackupFileType::TarGzFast => create_backup::<TarGzCompressor<1>>,
-        BackupFileType::TarGzSmall => create_backup::<TarGzCompressor<9>>,
-        BackupFileType::Tar => create_backup::<TarCompressor>,
-        BackupFileType::Copy => create_backup::<CopyCompressor>,
-    })(
-        &backup_config.location,
-        file_path.clone(),
-        &backup_config.files,
-    )?;
+
+    match &backup_config.file_type {
+        BackupFileType::Zip => {
+            create_backup::<ZipCompressor>(
+                &backup_config.location,
+                file_path.clone(),
+                &backup_config.files,
+            )
+            .await?
+        }
+        BackupFileType::TarGz => {
+            create_backup::<TarGzCompressor<6>>(
+                &backup_config.location,
+                file_path.clone(),
+                &backup_config.files,
+            )
+            .await?
+        }
+        BackupFileType::TarGzFast => {
+            create_backup::<TarGzCompressor<1>>(
+                &backup_config.location,
+                file_path.clone(),
+                &backup_config.files,
+            )
+            .await?
+        }
+        BackupFileType::TarGzSmall => {
+            create_backup::<TarGzCompressor<9>>(
+                &backup_config.location,
+                file_path.clone(),
+                &backup_config.files,
+            )
+            .await?
+        }
+        BackupFileType::Tar => {
+            create_backup::<TarCompressor>(
+                &backup_config.location,
+                file_path.clone(),
+                &backup_config.files,
+            )
+            .await?
+        }
+        BackupFileType::Copy => {
+            create_backup::<CopyCompressor>(
+                &backup_config.location,
+                file_path.clone(),
+                &backup_config.files,
+            )
+            .await?
+        }
+    };
 
     Ok(file_path)
 }
 
-fn create_backup<C: Compressor>(
+async fn create_backup<C: Compressor>(
     base_path: &Path,
     output_path: PathBuf,
     globs: &[String],
@@ -58,7 +97,7 @@ fn create_backup<C: Compressor>(
     }
     let start = Instant::now();
 
-    let mut compressor = C::new(output_path)?;
+    let mut compressor = C::new(output_path).await?;
     for file in GlobWalkerBuilder::from_patterns(base_path, globs)
         .follow_links(true)
         .build()
@@ -67,12 +106,14 @@ fn create_backup<C: Compressor>(
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
     {
-        let size = compressor.add_file(
-            file.path(),
-            file.path()
-                .strip_prefix(base_path)
-                .wrap_err("File outside base path!")?,
-        )?;
+        let size = compressor
+            .add_file(
+                file.path(),
+                file.path()
+                    .strip_prefix(base_path)
+                    .wrap_err("File outside base path!")?,
+            )
+            .await?;
         let human_size = if size.is_nan() {
             "unknown".into()
         } else {
@@ -84,7 +125,7 @@ fn create_backup<C: Compressor>(
             human_size
         );
     }
-    let size = compressor.finish()?;
+    let size = compressor.finish().await?;
     let elapsed = humantime::format_duration(start.elapsed());
     let human_size = if size.is_nan() {
         "unknown".into()
@@ -98,7 +139,7 @@ fn create_backup<C: Compressor>(
     Ok(())
 }
 
-fn render_name(template: String, time_format: &str, file_type: &BackupFileType) -> Result<String> {
+fn render_name(template: &str, time_format: &str, file_type: &BackupFileType) -> Result<String> {
     let template = Template::new(template);
     let data = {
         let mut map = HashMap::new();

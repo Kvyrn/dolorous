@@ -7,12 +7,22 @@ use std::time::Duration;
 #[serde(rename_all = "kebab-case")]
 pub struct DolorousConfig {
     pub socket: Option<PathBuf>,
-    pub log: String,
+    #[serde(default = "default_log_filter")]
+    pub log_filter: String,
+    pub process: ProcessConfig,
     pub tasks: HashMap<String, TaskConfig>,
     pub backups: HashMap<String, BackupsConfig>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ProcessConfig {
+    pub command: String,
+    #[cfg_attr(feature = "docker", serde(default = "default_wroking_directory"))]
+    pub working_directory: PathBuf,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct BackupsConfig {
     pub output: PathBuf,
@@ -31,7 +41,6 @@ pub struct BackupsConfig {
 pub struct TaskConfig {
     /// When the task is scheduled. Uses cron syntax.
     pub schedule: String,
-    #[serde(deserialize_with = "figment::util::bool_from_str_or_int")]
     pub run_if_stopped: bool,
     pub actions: Vec<ActionType>,
 }
@@ -67,7 +76,7 @@ pub struct StopProperties {
     kill_timeout: Duration,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackupFileType {
     Zip,
@@ -94,19 +103,18 @@ fn default_name() -> String {
     "{date}.{extension}".into()
 }
 
-impl Default for DolorousConfig {
-    fn default() -> Self {
-        Self {
-            socket: Default::default(),
-            log: "info".into(),
-            tasks: Default::default(),
-            backups: Default::default(),
-        }
-    }
+fn default_log_filter() -> String {
+    "info".into()
+}
+
+/// Default server working directory for docker containers
+#[cfg(feature = "docker")]
+fn default_wroking_directory() -> PathBuf {
+    PathBuf::from("/server")
 }
 
 impl Default for BackupFileType {
     fn default() -> Self {
-        BackupFileType::Zip
+        Self::Zip
     }
 }
