@@ -1,4 +1,4 @@
-use crate::compressor::{
+use self::compressor::{
     Compressor, CopyCompressor, TarCompressor, TarGzCompressor, ZipCompressor,
 };
 use crate::configs::{BackupFileType, DolorousConfig};
@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::{debug, info, info_span};
+
+mod compressor;
 
 #[tracing::instrument(skip(config))]
 pub async fn run_backup(config: &DolorousConfig, backup: &str) -> Result<PathBuf> {

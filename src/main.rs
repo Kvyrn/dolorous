@@ -1,5 +1,4 @@
 mod backup_manager;
-mod compressor;
 mod configs;
 mod process;
 mod socket;
