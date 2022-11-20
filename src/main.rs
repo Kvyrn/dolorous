@@ -5,16 +5,24 @@ mod socket;
 mod tasks;
 
 use crate::configs::DolorousConfig;
+use crate::process::Controls;
 use clap::Parser;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+use tokio::select;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::OnceCell;
+use tokio::time::Instant;
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 static CONFIG: OnceCell<DolorousConfig> = OnceCell::const_new();
+static EXITING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Parser, Debug, Deserialize, Serialize)]
 struct Args {
@@ -44,11 +52,48 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_env("DOLOROUS_LOG"))
         .init();
     CONFIG.set(config).unwrap();
+    let config = CONFIG.get().unwrap();
 
     //backup_manager::run_backup(&config, "default").await?;
-    socket::setup(CONFIG.get().unwrap()).await?;
-    tasks::start(CONFIG.get().unwrap()).await?;
-    process::run(CONFIG.get().unwrap()).await?;
+    socket::setup(config).await?;
+    tasks::start(config).await?;
+    process::deamon().await?;
 
-    Ok(())
+    let mut term_sig = signal(SignalKind::terminate())?;
+    let mut int_sig = signal(SignalKind::interrupt())?;
+
+    select! {
+        _ = term_sig.recv() => {},
+        _ = int_sig.recv() => {},
+    }
+    info!("Stopping...");
+    EXITING.store(true, Ordering::Relaxed);
+    if let Some(control) = process::CONTROL.get() {
+        let _ = control.send(Controls::Stop);
+    }
+    let start = Instant::now();
+    let stop_after = config.process.stop_config.kill_timeout
+        + config.process.stop_config.term_timeout
+        + Duration::from_secs(5);
+    // Wait for cleanup
+    loop {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        if start.elapsed() > stop_after {
+            break;
+        }
+        {
+            if process::STDIN.lock().is_none() {
+                break;
+            }
+        }
+        debug!("Checked")
+    }
+    if let Some(path) = &config.socket {
+        info!("Removing socket");
+        if let Err(err) = tokio::fs::remove_file(path).await {
+            error!(?err, "Failed to delete socket");
+        }
+    }
+    info!("Stopped!");
+    std::process::exit(0);
 }

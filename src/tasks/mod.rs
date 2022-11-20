@@ -6,7 +6,7 @@ use color_eyre::Result;
 use cron::Schedule;
 use std::str::FromStr;
 use tokio::time::Instant;
-use tracing::{error, info_span, warn, Instrument, info};
+use tracing::{error, info, info_span, warn, Instrument};
 
 pub async fn start(config: &DolorousConfig) -> Result<()> {
     for (name, cfg) in &config.tasks {
@@ -17,7 +17,7 @@ pub async fn start(config: &DolorousConfig) -> Result<()> {
 
 async fn task_scheduler(config: TaskConfig) {
     let Ok(schedule) = Schedule::from_str(&config.schedule) else {
-        error!("Invalid task schedule!");
+        error!("Invalid task schedule: {}", &config.schedule);
         return;
     };
     for datetime in schedule.upcoming(Local) {

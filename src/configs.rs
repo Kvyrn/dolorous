@@ -18,8 +18,13 @@ pub struct DolorousConfig {
 #[serde(rename_all = "kebab-case")]
 pub struct ProcessConfig {
     pub command: String,
+    pub stop_config: StopProperties,
     #[cfg_attr(feature = "docker", serde(default = "default_wroking_directory"))]
     pub working_directory: PathBuf,
+    #[serde(default = "default_restart_attempts")]
+    pub restart_attempts: i16,
+    #[serde(with = "humantime_serde", default = "default_restart_delay")]
+    pub restart_delay: Duration,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -48,32 +53,22 @@ pub struct TaskConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum ActionType {
-    Backup {
-        backup: String,
-    },
-    Command {
-        command: String,
-    },
+    Backup { backup: String },
+    Command { command: String },
     Start,
-    Stop {
-        #[serde(flatten)]
-        properties: StopProperties,
-    },
-    Restart {
-        #[serde(flatten)]
-        properties: StopProperties,
-    },
+    Stop,
+    Restart,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct StopProperties {
     #[serde(default = "default_stop_command")]
-    stop_command: String,
+    pub stop_command: String,
     #[serde(with = "humantime_serde", default = "default_duration")]
-    term_timeout: Duration,
+    pub term_timeout: Duration,
     #[serde(with = "humantime_serde", default = "default_duration")]
-    kill_timeout: Duration,
+    pub kill_timeout: Duration,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,6 +100,14 @@ fn default_name() -> String {
 
 fn default_log_filter() -> String {
     "info".into()
+}
+
+fn default_restart_attempts() -> i16 {
+    5
+}
+
+fn default_restart_delay() -> Duration {
+    Duration::from_secs(30)
 }
 
 /// Default server working directory for docker containers

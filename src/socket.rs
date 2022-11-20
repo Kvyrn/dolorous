@@ -1,10 +1,12 @@
 use crate::configs::DolorousConfig;
+use crate::EXITING;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
+use tracing::{error, info, info_span, instrument, warn, Instrument};
 
 #[instrument(skip(config))]
 pub async fn setup(config: &DolorousConfig) -> Result<()> {
@@ -21,7 +23,7 @@ async fn run_socket(path: &Path) -> Result<()> {
     info!("Opened socket at {}", path.to_string_lossy());
 
     tokio::spawn(async move {
-        loop {
+        while !EXITING.load(Ordering::Relaxed) {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     let peer_cred = stream

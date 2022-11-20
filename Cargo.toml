@@ -35,5 +35,6 @@ async-trait = "0.1.58"
 heapless = "0.7.16"
 shell-words = "1.1.0"
 parking_lot = "0.12.1"
+nix = "0.25.0"
 
 cron = "0.12.0"

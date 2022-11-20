@@ -1,15 +1,16 @@
-use color_eyre::eyre::{bail, eyre};
 use crate::configs::ActionType;
-use color_eyre::Result;
+use crate::process::Controls;
 use crate::CONFIG;
+use color_eyre::eyre::{bail, eyre};
+use color_eyre::Result;
 
 pub async fn execute_action(action: &ActionType) -> Result<()> {
     match action {
         ActionType::Backup { backup } => backup_action(backup).await,
         ActionType::Command { command } => command_action(command).await,
-        ActionType::Start => unimplemented!(),
-        ActionType::Stop { properties } => unimplemented!(),
-        ActionType::Restart { properties } => unimplemented!(),
+        ActionType::Start => start_action().await,
+        ActionType::Stop => stop_action().await,
+        ActionType::Restart => restart_action().await,
     }
 }
 
@@ -28,5 +29,30 @@ async fn command_action(command: &str) -> Result<()> {
         sender.clone()
     };
     sender.send(command.to_string())?;
+    Ok(())
+}
+
+async fn start_action() -> Result<()> {
+    let Some(control) = crate::process::CONTROL.get().cloned() else {
+        bail!("Uninitialized");
+    };
+    control.send(Controls::Start)?;
+    Ok(())
+}
+
+async fn stop_action() -> Result<()> {
+    let Some(control) = crate::process::CONTROL.get().cloned() else {
+        bail!("Uninitialized")
+    };
+    control.send(Controls::Stop)?;
+    Ok(())
+}
+
+async fn restart_action() -> Result<()> {
+    let Some(control) = crate::process::CONTROL.get().cloned() else {
+        bail!("Uninitialized")
+    };
+    control.send(Controls::Stop)?;
+    control.send(Controls::Start)?;
     Ok(())
 }
