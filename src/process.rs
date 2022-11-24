@@ -9,6 +9,7 @@ use nix::unistd::Pid;
 use parking_lot::Mutex;
 use std::process::Stdio;
 use std::time::Duration;
+use nix::sys::wait::WaitStatus;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::select;
@@ -29,21 +30,23 @@ pub async fn deamon() -> Result<()> {
         .wrap_err("Already running!")
         .unwrap();
 
+    let (exit_sender, mut exit_receiver) = mpsc::unbounded_channel::<(i32, i32)>();
+    start_exit_watcher(exit_sender);
+
     tokio::spawn(
         async move {
             let config = CONFIG.get().unwrap();
             let mut child = start(config.process.restart_attempts, config.process.restart_delay, config).await;
+            let mut child_should_run = true;
 
             loop {
                 if let Some(ch) = &mut child {
                     select! {
-                        _ = tokio::time::sleep(Duration::from_secs(30)) => {
-                            if let Ok(Some(status)) = ch.try_wait() {
-                                if status.success() {
-                                    info!("Child exited with code {}", status.code().unwrap_or_default());
-                                } else {
-                                    error!("Child exited with code {}", status.code().unwrap_or_default());
-                                }
+                        reply = exit_receiver.recv() => {
+                            let (pid, exit_code) = reply.ok_or_else(|| eyre!("Exit watcher down")).unwrap()
+                            info!(exit_code, "Child exited");
+
+                            if child_should_run {
                                 child = start(config.process.restart_attempts, config.process.restart_delay, config).await;
                             }
                         },
@@ -51,11 +54,13 @@ pub async fn deamon() -> Result<()> {
                             if let Some(ctrl) = ctrl {
                                 match ctrl {
                                     Controls::Start => {
+                                        child_should_run = true;
                                         if child.is_none() {
                                             child = start(config.process.restart_attempts, config.process.restart_delay, config).await;
                                         }
                                     },
                                     Controls::Stop => {
+                                        child_should_run = false;
                                         if let Some(ch) = &mut child {
                                             stop_wrapper(&config.process.stop_config, ch).await;
                                             drop(child.take());
@@ -72,6 +77,25 @@ pub async fn deamon() -> Result<()> {
     );
 
     Ok(())
+}
+
+async fn start_exit_watcher(channel: mpsc::UnboundedSender<(i32, i32)>) {
+    std::thread::spawn(move || {
+        loop {
+            match nix::sys::wait::waitpid(None, None) {
+                Ok(WaitStatus::Exited(pid, exit_code)) => {
+                    if let Err(err) = channel.send((pid.as_raw() as i32, exit_code)) {
+                        error!(?err, "Exit send error");
+                    }
+                },
+                Err(err) => {
+                    error!(?err, "Wait error");
+                },
+                // Ignore other wait statuses
+                _ => {}
+            }
+        }
+    });
 }
 
 async fn stop_wrapper(config: &StopProperties, child: &mut Child) {
