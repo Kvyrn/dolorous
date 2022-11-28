@@ -52,6 +52,7 @@ async fn handle_client(stream: UnixStream) -> Result<()> {
         sender.clone()
     };
     let Some(channel) = opt else {
+        info!("Disconnectiong client: stdin unavailable");
         writer.write_all(b"Uninitialized").await?;
         return Ok(());
     };
@@ -60,6 +61,7 @@ async fn handle_client(stream: UnixStream) -> Result<()> {
         watch.clone()
     };
     let Some(mut watch) = opt else {
+        info!("Disconnectiong client: stdout unavailable");
         writer.write_all(b"Uninitialized").await?;
         return Ok(());
     };

@@ -16,7 +16,7 @@ pub async fn handle_exit_event(
     match &state {
         #[rustfmt::skip]
         ProcessState::Watching { pid: existing_pid, attempt, .. } if *existing_pid == pid => {
-            warn!("Process exited during startup: attempt {}/{}, exit code {}", attempt, config.process.restart_attempts, exit_code);
+            warn!(pid, "Process exited during startup: attempt {}/{}, exit code {}", attempt, config.process.restart_attempts, exit_code);
             { *OUTPUT_WATCH.lock() = None; }
             { *STDIN.lock() = None; }
             let timeout_at = Instant::now() + config.process.restart_delay;
@@ -24,9 +24,9 @@ pub async fn handle_exit_event(
         }
         ProcessState::Running { pid: exsisting_pid } if *exsisting_pid == pid => {
             if exit_code != 0 {
-                warn!("Process exited with non-zero exit code {}", exit_code);
+                warn!(pid, "Process exited with non-zero exit code {}", exit_code);
             } else {
-                info!("Process exited with exit code 0");
+                info!(pid, "Process exited with exit code 0");
             }
 
             let restart = matches!(

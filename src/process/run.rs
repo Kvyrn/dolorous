@@ -125,7 +125,6 @@ pub async fn start(config: &DolorousConfig) -> Result<i32> {
                 }
             }
             info!("Stdin closed");
-            let _ = STDIN.lock().take();
         }
         .instrument(info_span!("write_stdin", pid)),
     );
