@@ -64,8 +64,8 @@ async fn handle_client(stream: UnixStream) -> Result<()> {
         return Ok(());
     };
     let data = {
-        let cache = crate::process::OUTPUT_CACHE.lock();
-        cache.oldest_ordered().copied().collect::<Vec<_>>()
+        let mut cache = crate::process::OUTPUT_CACHE.get().unwrap().lock();
+        cache.extract().to_string()
     };
 
     // Transport input to process
@@ -98,7 +98,7 @@ async fn handle_client(stream: UnixStream) -> Result<()> {
     // Transport process output to socket
     tokio::spawn(
         async move {
-            if writer.write_all(&data).await.is_err() {
+            if writer.write_all(data.as_bytes()).await.is_err() {
                 return;
             }
             while watch.changed().await.is_ok() {

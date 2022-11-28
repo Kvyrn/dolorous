@@ -18,13 +18,19 @@ pub struct DolorousConfig {
 #[serde(rename_all = "kebab-case")]
 pub struct ProcessConfig {
     pub command: String,
+    #[serde(default = "default_cache_size")]
+    pub cache_size: u32,
+    pub restart: RestartCondition,
     pub stop_config: StopProperties,
     #[cfg_attr(feature = "docker", serde(default = "default_wroking_directory"))]
     pub working_directory: PathBuf,
     #[serde(default = "default_restart_attempts")]
-    pub restart_attempts: i16,
+    pub restart_attempts: u16,
     #[serde(with = "humantime_serde", default = "default_restart_delay")]
     pub restart_delay: Duration,
+    /// Delay after witch the startup is considered done. Restart attempt counter is reset.
+    #[serde(with = "humantime_serde", default = "default_watch_delay")]
+    pub watch_delay: Duration,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -82,6 +88,17 @@ pub enum BackupFileType {
     Copy,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RestartCondition {
+    Never,
+    /// Zero exit code
+    UnlessCrashed,
+    /// Non-zero exit code
+    IfCrashed,
+    Always,
+}
+
 fn default_duration() -> Duration {
     Duration::from_secs(180)
 }
@@ -102,7 +119,12 @@ fn default_log_filter() -> String {
     "info".into()
 }
 
-fn default_restart_attempts() -> i16 {
+fn default_cache_size() -> u32 {
+    // 8KiB
+    2u32.pow(10) * 8
+}
+
+fn default_restart_attempts() -> u16 {
     5
 }
 
@@ -114,6 +136,10 @@ fn default_restart_delay() -> Duration {
 #[cfg(feature = "docker")]
 fn default_wroking_directory() -> PathBuf {
     PathBuf::from("/server")
+}
+
+fn default_watch_delay() -> Duration {
+    Duration::from_secs(60)
 }
 
 impl Default for BackupFileType {

@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
     //backup_manager::run_backup(&config, "default").await?;
     socket::setup(config).await?;
     tasks::start(config).await?;
-    process::deamon().await?;
+    process::deamon(config).await;
 
     let mut term_sig = signal(SignalKind::terminate())?;
     let mut int_sig = signal(SignalKind::interrupt())?;
