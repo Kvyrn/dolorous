@@ -13,12 +13,11 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use nix::sys::wait::wait;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::OnceCell;
-use tokio::time::Instant;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 static CONFIG: OnceCell<DolorousConfig> = OnceCell::const_new();
@@ -71,23 +70,8 @@ async fn main() -> Result<()> {
     if let Some(control) = process::CONTROL.get() {
         let _ = control.send(Controls::Stop);
     }
-    let start = Instant::now();
-    let stop_after = config.process.stop_config.kill_timeout
-        + config.process.stop_config.term_timeout
-        + Duration::from_secs(5);
-    // Wait for cleanup
-    loop {
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        if start.elapsed() > stop_after {
-            break;
-        }
-        {
-            if process::STDIN.lock().is_none() {
-                break;
-            }
-        }
-        debug!("Checked")
-    }
+    // Wait for child exit
+    let _ = wait();
     if let Some(path) = &config.socket {
         info!("Removing socket");
         if let Err(err) = tokio::fs::remove_file(path).await {
